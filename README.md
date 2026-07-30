@@ -7,12 +7,15 @@ for given course_id - 5149 (# correct in download_from_canvas) according to the 
     2) PDF is created (anonym or not anonym depends on the type of submission)
     3) PDF is sent with smtp using given .msmtprc config
 
-Automatisation:
+# Examples of files
+## Automatization using cron:
 ```
 cron: 1 23 1-30 9 1-5 /script.sh [https://phoenixnap.com/kb/cron-job-mac]
 ```
 
-```structure of dates_HWid and dates_MUDCARDid
+
+## Dtructure of dates_HWid and dates_MUDCARDid
+```
 %Y_%m_%d    id
 %Y_%m_%d    id
 2025_07_01  28855
@@ -20,11 +23,13 @@ cron: 1 23 1-30 9 1-5 /script.sh [https://phoenixnap.com/kb/cron-job-mac]
 2025_07_03  28916
 ```
 
-```structure of .token
+## Structure of .token
+```
 tokentokentokentokentokentokentokentokentokentokentokentokentokentokentoken
 ```
 
-```structure of .msmtprc
+## Structure of .msmtprc
+```
 account default
 auth            plain
 tls             on
@@ -35,10 +40,3 @@ from            mail@mail.com
 user            mail@mail.com
 password        password
 ```
-
-
-# 1
-Turns out there are anonymous (almost) quizes that prove anonymous free form submissions.
-
-# 2
-IT, need laptop or server for IW,  and SMTP mail.
