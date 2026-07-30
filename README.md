@@ -14,7 +14,7 @@ cron: 1 23 1-30 9 1-5 /script.sh [https://phoenixnap.com/kb/cron-job-mac]
 ```
 
 
-## Dtructure of dates_HWid and dates_MUDCARDid
+## Structure of dates_HWid and dates_MUDCARDid
 ```
 %Y_%m_%d    id
 %Y_%m_%d    id
