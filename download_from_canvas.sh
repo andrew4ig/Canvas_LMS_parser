@@ -1,155 +1,81 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -uo pipefail
 
 # Configuration
-FOLDER=$1"_"$2
-SUBM_ID=$2
-ANON=$3
+DATE="${1:?usage: $0 <date> <assignment_id> [anon]}"
+SUBM_ID="${2:?usage: $0 <date> <assignment_id> [anon]}"
+ANON="${3:-true}"
 
-TOKEN=$(cat .token)
+FOLDER="${DATE}_${SUBM_ID}"
+TOKEN=$(awk '/^token/     {print $2; exit}' .info)
+COURSE_ID=$(awk '/^COURSE_ID/ {print $2; exit}' .info)
 
-COURSE_ID="5718"
-BASE_URL="https://lms.skoltech.ru/api/v1/courses/$COURSE_ID/assignments/$SUBM_ID/submissions?"
-USERS_URL="https://lms.skoltech.ru/api/v1/courses/$COURSE_ID/assignments/$SUBM_ID/gradeable_students?"
+API="https://lms.skoltech.ru/api/v1/courses/${COURSE_ID}/assignments/${SUBM_ID}"
+SUBM_URL="${API}/submissions"
+USERS_URL="${API}/gradeable_students"
 
 PER_PAGE=50
-MAX_PAGES=5  
+MAX_PAGES=50
 
 OUTPUT_DIR=$FOLDER"/temp_pages"
-MERGED_FILE=$FOLDER"/out_merged.txt"
-MERGED_USERS=$FOLDER"/user_merged.txt"
+# MERGED_FILE=$FOLDER"/out_merged.txt"
+# MERGED_USERS=$FOLDER"/user_merged.txt"
 FINAL_FILE=$FOLDER"/out.txt"
 FINAL_USERS=$FOLDER"/users.txt"
 
-printf '#%.0s' {1..20}
-echo " download started"
+echo "---- download started ----"
 
 # Create temporary directory for page files
 mkdir -p "$FOLDER"
 mkdir -p "$OUTPUT_DIR"
 
-# Download pages until empty or max pages reached
-page=1
-while [ $page -le $MAX_PAGES ]; do
-  OUTPUT_FILE="$OUTPUT_DIR/out_page_${page}.txt"
-  OUTPUT_FILE_USER="$OUTPUT_DIR/out_user_${page}.txt"
-  echo "Downloading page $page to $OUTPUT_FILE..."
+fetch_all() {
+    local url="$1" prefix="$2" page=1
+    while [ "$page" -le "$MAX_PAGES" ]; do
+        local out="${OUTPUT_DIR}/${prefix}_page_${page}.json"
+        echo "Fetching ${prefix} page ${page}..."
+        if ! curl -fsSL --max-time 300 --retry 3 --compressed \
+                -H "Authorization: Bearer ${TOKEN}" \
+                -o "$out" \
+                "${url}?per_page=${PER_PAGE}&page=${page}"; then
+            echo "Error fetching ${url} page ${page}" >&2
+            return 1
+        fi
+        local count
+        count=$(jq 'length' "$out" 2>/dev/null) || count=0
+        if [ "$count" -eq 0 ]; then
+            rm -f "$out"
+            break
+        fi
+        page=$((page + 1))
+    done
+}
 
-  # Download with curl
-  curl -L -H "Authorization: Bearer $TOKEN" \
-     --max-time 300 \
-     --retry 3 \
-     --compressed \
-     -o "$OUTPUT_FILE" \
-     "${BASE_URL}&per_page=${PER_PAGE}&page=${page}"
-
-  if ! $ANON; then
-  curl -L -H "Authorization: Bearer $TOKEN" \
-    --max-time 300 \
-    --retry 3 \
-    --compressed \
-    -o "$OUTPUT_FILE_USER" \
-    "${USERS_URL}&per_page=${PER_PAGE}&page=${page}"
-  fi
-
-  # Check if download was successful
-  if [ $? -ne 0 ]; then
-  echo "Error downloading page $page. Exiting."
-  exit 1
-  fi
-
-  # Check if file is empty or contains no items (for JSON, check array length)
-  if [ ! -s "$OUTPUT_FILE" ]; then
-  echo "Page $page is empty. Stopping."
-  rm "$OUTPUT_FILE"  # Remove empty file
-  break
-  fi
-
-  # If JSON, check item count (requires jq)
-  if command -v jq >/dev/null 2>&1; then
-  item_count=$(jq '. | length' "$OUTPUT_FILE" 2>/dev/null || echo 0)
-  if [ "$item_count" -eq 0 ]; then
-    echo "Page $page has no items. Stopping."
-    rm "$OUTPUT_FILE"
-    break
-  fi
-  fi
-
-  ((page++))
-done
-
-
-# Check if any files were downloaded
-if ! ls "$OUTPUT_DIR"/out_page_*.txt >/dev/null 2>&1; then
-  echo "No files downloaded. Check API or token."
-  exit 1
-fi
-
-
-# echo "Merging files..."
-if head -n 1 "$OUTPUT_DIR/out_page_1.txt" | grep -q '^\['; then
-  # JSON array detected, merge into single array
-  echo "[" > "$MERGED_FILE"
-  first=1
-  for file in "$OUTPUT_DIR"/out_page_*.txt; do
-  if [ $first -eq 1 ]; then
-    sed '1s/^\[//' "$file" | sed '$s/\]$//' >> "$MERGED_FILE"
-    first=0
-  else
-    echo "," >> "$MERGED_FILE"
-    sed '1s/^\[//' "$file" | sed '$s/\]$//' >> "$MERGED_FILE"
-  fi
-  done
-  echo "]" >> "$MERGED_FILE"
-else
-  # Plain text, simple concatenation
-  cat "$OUTPUT_DIR"/out_page_*.txt > "$MERGED_FILE"
-fi
-
-# echo "Applying regex replacement..."
-sed 's/{/\n{/g' "$MERGED_FILE" > "$FINAL_FILE"
-
-
-
-# echo "Verifying output..."
-if command -v jq >/dev/null 2>&1 && head -n 1 "$FINAL_FILE" | grep -q '^\['; then
-  item_count=$(jq '. | length' "$FINAL_FILE" 2>/dev/null || echo "Invalid JSON")
-  echo "Total items in $FINAL_FILE: $item_count"
-else
-  echo "Line count in $FINAL_FILE: $(wc -l < "$FINAL_FILE")"
-fi
-
-
-
+fetch_all "$SUBM_URL" out || exit 1
 if ! $ANON; then
-  if head -n 1 "$OUTPUT_DIR/out_user_1.txt" | grep -q '^\['; then
-  # JSON array detected, merge into single array
-  echo "[" > "$MERGED_USERS"
-  first=1
-  for file in "$OUTPUT_DIR"/out_user_*.txt; do
-    if [ $first -eq 1 ]; then
-    sed '1s/^\[//' "$file" | sed '$s/\]$//' >> "$MERGED_USERS"
-    first=0
-    else
-    echo "," >> "$MERGED_USERS"
-    sed '1s/^\[//' "$file" | sed '$s/\]$//' >> "$MERGED_USERS"
-    fi
-  done
-  echo "]" >> "$MERGED_USERS"
-  else
-  # Plain text, simple concatenation
-  cat "$OUTPUT_DIR"/out_user_*.txt > "$MERGED_USERS"
-  fi
-
-  # echo "Applying regex replacement..."
-  sed 's/{/\n{/g' "$MERGED_USERS" > "$FINAL_USERS"
-
-  rm -f "$MERGED_USERS"
+  fetch_all "$USERS_URL" user || exit 1
 fi
 
-# Clean up temporary files
-echo "Cleaning up..."
-rm -rf "$OUTPUT_DIR"
-rm -f "$MERGED_FILE" 
+# Merge via jq — always produces a valid JSON array
+shopt -s nullglob
+out_pages=("$OUTPUT_DIR"/out_page_*.json)
+user_pages=("$OUTPUT_DIR"/user_page_*.json)
 
-printf '#%.0s' {1..20}
-echo " download finished"
+if [ ${#out_pages[@]} -eq 0 ]; then
+  echo "Error: no submission pages downloaded" >&2
+  exit 1
+fi
+
+
+jq -s 'add' "${out_pages[@]}" > "$FINAL_FILE"
+if ! $ANON && [ ${#user_pages[@]} -gt 0 ]; then
+  jq -s 'add' "${user_pages[@]}" > "$FINAL_USERS"
+fi
+
+
+# # Clean up temporary files
+# echo "Cleaning up..."
+# rm -rf "$OUTPUT_DIR"
+
+
+echo "---- download finished ----"

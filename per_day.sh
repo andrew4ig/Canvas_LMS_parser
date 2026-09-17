@@ -1,5 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-bash ./download_from_canvas.sh $1 $2 $3
-bash ./txt_to_pdf.sh $1 $2 $3
-bash ./send_mail.sh $1 $2 $3
+DATE="$1"; ID="$2"; ANON="$3"
+
+# bash ./download_from_canvas.sh "$DATE" "$ID" "$ANON"
+bash ./txt_to_pdf.sh          "$DATE" "$ID" "$ANON"
+# bash ./send_mail.sh         "$DATE" "$ID" "$ANON"
